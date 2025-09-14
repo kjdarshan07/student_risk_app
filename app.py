@@ -56,7 +56,7 @@ if attendance_file and scores_file and fees_file:
 
     def color_risk(val):
         if val == "Low":
-            return "background-color: lightgreen; color: black"
+            return "background-color: green; color: black"
         elif val == "Medium":
             return "background-color: orange; color: black"
         elif val == "High":
@@ -90,4 +90,5 @@ if attendance_file and scores_file and fees_file:
     y_pred = clf.predict(X_test)
     report = classification_report(y_test, y_pred, output_dict=False)
     st.text(report)
+
 
