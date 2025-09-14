@@ -1,9 +1,12 @@
 import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import classification_report
 
 # Title
-st.title("Early Student Risk Alert System")
+st.title("Early Student Risk Alert System (with ML)")
 
 # Upload CSVs
 attendance_file = st.file_uploader("Upload Attendance CSV", type=["csv"])
@@ -19,7 +22,7 @@ if attendance_file and scores_file and fees_file:
     # Merge
     merged = attendance.merge(scores, on="student_id").merge(fees, on="student_id")
 
-    # Risk logic
+    # --- Rule-based risk (existing logic) ---
     def get_risk(row):
         if row["attendance_pct"] < 60 or row["avg_score"] < 40 or row["fees_status"] == "Unpaid":
             return "High"
@@ -28,17 +31,41 @@ if attendance_file and scores_file and fees_file:
         else:
             return "Low"
 
-    merged["risk_level"] = merged.apply(get_risk, axis=1)
+    merged["rule_risk"] = merged.apply(get_risk, axis=1)
+
+    # --- Machine Learning (new) ---
+    # Features
+    X = merged[["attendance_pct", "avg_score"]].copy()
+    X["fees_unpaid"] = merged["fees_status"].apply(lambda x: 1 if x == "Unpaid" else 0)
+
+    # Labels from rule-based risk
+    y = merged["rule_risk"]
+
+    # Train/test split
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=42)
+
+    # Train Random Forest
+    clf = RandomForestClassifier(n_estimators=100, random_state=42)
+    clf.fit(X_train, y_train)
+
+    # Predictions
+    merged["ml_predicted_risk"] = clf.predict(X)
 
     # Show table
     st.subheader("Merged Student Data with Risk Levels")
-    st.dataframe(merged)
+    st.dataframe(merged[["student_id","name","attendance_pct","avg_score","fees_status","rule_risk","ml_predicted_risk"]])
 
-    # Chart: Risk distribution
-    st.subheader("Risk Level Distribution")
-    risk_counts = merged["risk_level"].value_counts()
+    # Chart: ML Risk distribution
+    st.subheader("ML Risk Level Distribution")
+    risk_counts = merged["ml_predicted_risk"].value_counts()
     fig, ax = plt.subplots()
     risk_counts.plot(kind="bar", ax=ax)
     ax.set_xlabel("Risk Level")
     ax.set_ylabel("Number of Students")
     st.pyplot(fig)
+
+    # Show ML performance vs rules
+    st.subheader("Model Evaluation (ML vs Rule-based labels)")
+    y_pred = clf.predict(X_test)
+    report = classification_report(y_test, y_pred, output_dict=False)
+    st.text(report)
