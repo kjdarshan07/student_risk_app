@@ -4,9 +4,27 @@ import matplotlib.pyplot as plt
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import classification_report
+import requests
 
 # Title
-st.title("Early Student Risk Alert System (with ML)")
+st.title("Early Student Risk Alert System (with ML + AI Summary)")
+
+# Hugging Face API (optional)
+API_URL = "https://api-inference.huggingface.co/models/facebook/bart-large-cnn"
+HF_TOKEN = st.secrets.get("HF_TOKEN", None)  # add in Streamlit secrets
+headers = {"Authorization": f"Bearer {HF_TOKEN}"} if HF_TOKEN else {}
+
+def summarize_text(text):
+    """Use Hugging Face API if token exists, otherwise fallback."""
+    if not HF_TOKEN:
+        return None
+    try:
+        response = requests.post(API_URL, headers=headers, json={"inputs": text})
+        if response.status_code == 200:
+            return response.json()[0]["summary_text"]
+    except Exception as e:
+        return None
+    return None
 
 # Upload CSVs
 attendance_file = st.file_uploader("Upload Attendance CSV", type=["csv"])
@@ -34,29 +52,23 @@ if attendance_file and scores_file and fees_file:
     merged["rule_risk"] = merged.apply(get_risk, axis=1)
 
     # --- Machine Learning (new) ---
-    # Features
     X = merged[["attendance_pct", "avg_score"]].copy()
     X["fees_unpaid"] = merged["fees_status"].apply(lambda x: 1 if x == "Unpaid" else 0)
-
-    # Labels from rule-based risk
     y = merged["rule_risk"]
 
-    # Train/test split
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=42)
 
-    # Train Random Forest
     clf = RandomForestClassifier(n_estimators=100, random_state=42)
     clf.fit(X_train, y_train)
 
-    # Predictions
     merged["ml_predicted_risk"] = clf.predict(X)
 
-       # Show table with colored risk levels
+    # --- Styled Table ---
     st.subheader("Merged Student Data with Risk Levels")
 
     def color_risk(val):
         if val == "Low":
-            return "background-color: green; color: black"
+            return "background-color: lightgreen; color: black"
         elif val == "Medium":
             return "background-color: orange; color: black"
         elif val == "High":
@@ -69,45 +81,48 @@ if attendance_file and scores_file and fees_file:
 
     st.dataframe(styled_df, use_container_width=True)
 
-
-    styled_df = merged[[
-        "student_id","name","attendance_pct","avg_score","fees_status","rule_risk","ml_predicted_risk"
-    ]].style.applymap(color_risk, subset=["rule_risk","ml_predicted_risk"])
-
-    st.dataframe(styled_df, use_container_width=True)
-
-    # Chart: ML Risk distribution
+    # --- Chart ---
     st.subheader("ML Risk Level Distribution")
     risk_counts = merged["ml_predicted_risk"].value_counts()
     fig, ax = plt.subplots()
-    risk_counts.plot(kind="bar", ax=ax)
+    risk_counts.plot(kind="bar", ax=ax, color=["green","orange","red"])
     ax.set_xlabel("Risk Level")
     ax.set_ylabel("Number of Students")
     st.pyplot(fig)
 
-    # Show ML performance vs rules
+    # --- ML Performance ---
     st.subheader("Model Evaluation (ML vs Rule-based labels)")
     y_pred = clf.predict(X_test)
     report = classification_report(y_test, y_pred, output_dict=False)
     st.text(report)
 
-import requests
+    # --- AI Summary ---
+    st.subheader("AI Summary of Risk Table")
 
-# Hugging Face summarization
-API_URL = "https://api-inference.huggingface.co/models/facebook/bart-large-cnn"
-headers = {"Authorization": f"Bearer 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"}
+    # Extract key insights
+    high_risk_students = merged[merged["ml_predicted_risk"] == "High"]["name"].tolist()
+    low_attendance = merged[merged["attendance_pct"] < 60]["name"].tolist()
+    unpaid_fees = merged[merged["fees_status"] == "Unpaid"]["name"].tolist()
+    low_scores = merged[merged["avg_score"] < 40]["name"].tolist()
 
-def summarize_text(text):
-    response = requests.post(API_URL, headers=headers, json={"inputs": text})
-    if response.status_code == 200:
-        return response.json()[0]["summary_text"]
+    insight_text = (
+        f"Out of {len(merged)} students, {len(high_risk_students)} are predicted High Risk: {', '.join(high_risk_students)}. "
+        f"Low attendance: {', '.join(low_attendance)}. "
+        f"Unpaid fees: {', '.join(unpaid_fees)}. "
+        f"Low scores: {', '.join(low_scores)}. "
+    )
+
+    summary = summarize_text(insight_text)
+
+    if summary:
+        st.write(summary)
     else:
-        return f"Error: {response.text}"
-
-# Generate summary of ML table
-st.subheader("AI Summary of Risk Table")
-table_text = merged.to_string(index=False)
-summary = summarize_text(table_text[:1500])  # limit to avoid long payloads
-st.write(summary)
-
-
+        # Fallback rule-based summary
+        summary_text = (
+            f"There are {len(merged)} students. "
+            f"High risk: {', '.join(high_risk_students) if high_risk_students else 'None'}. "
+            f"Low attendance: {', '.join(low_attendance) if low_attendance else 'None'}. "
+            f"Unpaid fees: {', '.join(unpaid_fees) if unpaid_fees else 'None'}. "
+            f"Low scores: {', '.join(low_scores) if low_scores else 'None'}."
+        )
+        st.write(summary_text)
