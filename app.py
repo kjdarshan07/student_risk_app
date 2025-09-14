@@ -91,4 +91,23 @@ if attendance_file and scores_file and fees_file:
     report = classification_report(y_test, y_pred, output_dict=False)
     st.text(report)
 
+import requests
+
+# Hugging Face summarization
+API_URL = "https://api-inference.huggingface.co/models/facebook/bart-large-cnn"
+headers = {"Authorization": f"Bearer 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"}
+
+def summarize_text(text):
+    response = requests.post(API_URL, headers=headers, json={"inputs": text})
+    if response.status_code == 200:
+        return response.json()[0]["summary_text"]
+    else:
+        return f"Error: {response.text}"
+
+# Generate summary of ML table
+st.subheader("AI Summary of Risk Table")
+table_text = merged.to_string(index=False)
+summary = summarize_text(table_text[:1500])  # limit to avoid long payloads
+st.write(summary)
+
 
