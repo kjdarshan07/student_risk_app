@@ -51,9 +51,30 @@ if attendance_file and scores_file and fees_file:
     # Predictions
     merged["ml_predicted_risk"] = clf.predict(X)
 
-    # Show table
+       # Show table with colored risk levels
     st.subheader("Merged Student Data with Risk Levels")
-    st.dataframe(merged[["student_id","name","attendance_pct","avg_score","fees_status","rule_risk","ml_predicted_risk"]])
+
+    def color_risk(val):
+        if val == "Low":
+            return "background-color: lightgreen; color: black"
+        elif val == "Medium":
+            return "background-color: orange; color: black"
+        elif val == "High":
+            return "background-color: red; color: white"
+        return ""
+
+    styled_df = merged[[
+        "student_id","name","attendance_pct","avg_score","fees_status","rule_risk","ml_predicted_risk"
+    ]].style.applymap(color_risk, subset=["rule_risk","ml_predicted_risk"])
+
+    st.dataframe(styled_df, use_container_width=True)
+
+
+    styled_df = merged[[
+        "student_id","name","attendance_pct","avg_score","fees_status","rule_risk","ml_predicted_risk"
+    ]].style.applymap(color_risk, subset=["rule_risk","ml_predicted_risk"])
+
+    st.dataframe(styled_df, use_container_width=True)
 
     # Chart: ML Risk distribution
     st.subheader("ML Risk Level Distribution")
@@ -69,3 +90,4 @@ if attendance_file and scores_file and fees_file:
     y_pred = clf.predict(X_test)
     report = classification_report(y_test, y_pred, output_dict=False)
     st.text(report)
+
