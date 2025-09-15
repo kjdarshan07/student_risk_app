@@ -32,15 +32,39 @@ scores_file = st.file_uploader("Upload Scores CSV", type=["csv"])
 fees_file = st.file_uploader("Upload Fees CSV", type=["csv"])
 
 if attendance_file and scores_file and fees_file:
-    # Load data
+    # Load uploaded data
     attendance = pd.read_csv(attendance_file)
     scores = pd.read_csv(scores_file)
     fees = pd.read_csv(fees_file)
+else:
+    st.info("No files uploaded — using sample demo data.")
+    attendance = pd.DataFrame([
+        {"student_id":101,"name":"Rahul","attendance_pct":85},
+        {"student_id":102,"name":"Arun","attendance_pct":55},
+        {"student_id":103,"name":"Drake","attendance_pct":70},
+        {"student_id":104,"name":"Drisha","attendance_pct":40},
+        {"student_id":105,"name":"Kendrick","attendance_pct":95},
+    ])
+    scores = pd.DataFrame([
+        {"student_id":101,"avg_score":78,"prev_score":80,"attempts_failed":0},
+        {"student_id":102,"avg_score":35,"prev_score":50,"attempts_failed":1},
+        {"student_id":103,"avg_score":60,"prev_score":62,"attempts_failed":0},
+        {"student_id":104,"avg_score":30,"prev_score":45,"attempts_failed":2},
+        {"student_id":105,"avg_score":90,"prev_score":88,"attempts_failed":0},
+    ])
+    fees = pd.DataFrame([
+        {"student_id":101,"fees_status":"Paid"},
+        {"student_id":102,"fees_status":"Unpaid"},
+        {"student_id":103,"fees_status":"Paid"},
+        {"student_id":104,"fees_status":"Unpaid"},
+        {"student_id":105,"fees_status":"Paid"},
+    ])
+
 
     # Merge
     merged = attendance.merge(scores, on="student_id").merge(fees, on="student_id")
 
-    # --- Rule-based risk (existing logic) ---
+    #Rule-based risk (existing logic)
     def get_risk(row):
         if row["attendance_pct"] < 60 or row["avg_score"] < 40 or row["fees_status"] == "Unpaid":
             return "High"
@@ -51,7 +75,7 @@ if attendance_file and scores_file and fees_file:
 
     merged["rule_risk"] = merged.apply(get_risk, axis=1)
 
-    # --- Machine Learning (new) ---
+    # Machine Learning (new)
     X = merged[["attendance_pct", "avg_score"]].copy()
     X["fees_unpaid"] = merged["fees_status"].apply(lambda x: 1 if x == "Unpaid" else 0)
     y = merged["rule_risk"]
@@ -63,7 +87,7 @@ if attendance_file and scores_file and fees_file:
 
     merged["ml_predicted_risk"] = clf.predict(X)
 
-    # --- Styled Table ---
+    #Styled Table
     st.subheader("Merged Student Data with Risk Levels")
 
     def color_risk(val):
@@ -81,7 +105,7 @@ if attendance_file and scores_file and fees_file:
 
     st.dataframe(styled_df, use_container_width=True)
 
-    # --- Chart ---
+    # Chart
     st.subheader("ML Risk Level Distribution")
     risk_counts = merged["ml_predicted_risk"].value_counts()
     fig, ax = plt.subplots()
@@ -90,13 +114,13 @@ if attendance_file and scores_file and fees_file:
     ax.set_ylabel("Number of Students")
     st.pyplot(fig)
 
-    # --- ML Performance ---
+    #  ML Performance
     st.subheader("Model Evaluation (ML vs Rule-based labels)")
     y_pred = clf.predict(X_test)
     report = classification_report(y_test, y_pred, output_dict=False)
     st.text(report)
 
-    # --- AI Summary ---
+    #  AI Summary 
     st.subheader("AI Summary of Risk Table")
 
     # Extract key insights
@@ -126,3 +150,4 @@ if attendance_file and scores_file and fees_file:
             f"Low scores: {', '.join(low_scores) if low_scores else 'None'}."
         )
         st.write(summary_text)
+
