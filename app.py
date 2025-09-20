@@ -6,10 +6,15 @@ from sklearn.model_selection import train_test_split
 from sklearn.metrics import classification_report
 import requests
 
-# Title
-st.title("Early Student Risk Alert System (with ML + AI Summary)")
+# =========================
+# Title & Subtitle
+# =========================
+st.markdown("<h1 style='text-align: center; color: #2c3e50;'>📊 Early Student Risk Alert System</h1>", unsafe_allow_html=True)
+st.markdown("<h4 style='text-align: center; color: gray;'>Machine Learning + AI-powered Insights</h4><br>", unsafe_allow_html=True)
 
+# =========================
 # Hugging Face API (optional)
+# =========================
 API_URL = "https://api-inference.huggingface.co/models/facebook/bart-large-cnn"
 HF_TOKEN = st.secrets.get("HF_TOKEN", None)  # add in Streamlit secrets
 headers = {"Authorization": f"Bearer {HF_TOKEN}"} if HF_TOKEN else {}
@@ -22,17 +27,25 @@ def summarize_text(text):
         response = requests.post(API_URL, headers=headers, json={"inputs": text})
         if response.status_code == 200:
             return response.json()[0]["summary_text"]
-    except Exception as e:
+    except Exception:
         return None
     return None
 
-# Upload CSVs
-attendance_file = st.file_uploader("Upload Attendance CSV", type=["csv"])
-scores_file = st.file_uploader("Upload Scores CSV", type=["csv"])
-fees_file = st.file_uploader("Upload Fees CSV", type=["csv"])
+# =========================
+# Sidebar File Uploads
+# =========================
+st.sidebar.header("📂 Upload Data")
+attendance_file = st.sidebar.file_uploader("Upload Attendance CSV", type=["csv"])
+scores_file = st.sidebar.file_uploader("Upload Scores CSV", type=["csv"])
+fees_file = st.sidebar.file_uploader("Upload Fees CSV", type=["csv"])
 
+st.sidebar.markdown("---")
+st.sidebar.write("ℹ️ If no files are uploaded, demo data will be used.")
+
+# =========================
+# Load Data
+# =========================
 if attendance_file and scores_file and fees_file:
-    # Load uploaded data
     attendance = pd.read_csv(attendance_file)
     scores = pd.read_csv(scores_file)
     fees = pd.read_csv(fees_file)
@@ -60,52 +73,55 @@ else:
         {"student_id":105,"fees_status":"Paid"},
     ])
 
+# =========================
+# Merge & Risk Logic
+# =========================
+merged = attendance.merge(scores, on="student_id").merge(fees, on="student_id")
 
-    # Merge
-    merged = attendance.merge(scores, on="student_id").merge(fees, on="student_id")
+def get_risk(row):
+    if row["attendance_pct"] < 60 or row["avg_score"] < 40 or row["fees_status"] == "Unpaid":
+        return "High"
+    elif row["attendance_pct"] < 75 or row["avg_score"] < 50:
+        return "Medium"
+    else:
+        return "Low"
 
-    #Rule-based risk (existing logic)
-    def get_risk(row):
-        if row["attendance_pct"] < 60 or row["avg_score"] < 40 or row["fees_status"] == "Unpaid":
-            return "High"
-        elif row["attendance_pct"] < 75 or row["avg_score"] < 50:
-            return "Medium"
-        else:
-            return "Low"
+merged["rule_risk"] = merged.apply(get_risk, axis=1)
 
-    merged["rule_risk"] = merged.apply(get_risk, axis=1)
+# Machine Learning
+X = merged[["attendance_pct", "avg_score"]].copy()
+X["fees_unpaid"] = merged["fees_status"].apply(lambda x: 1 if x == "Unpaid" else 0)
+y = merged["rule_risk"]
 
-    # Machine Learning (new)
-    X = merged[["attendance_pct", "avg_score"]].copy()
-    X["fees_unpaid"] = merged["fees_status"].apply(lambda x: 1 if x == "Unpaid" else 0)
-    y = merged["rule_risk"]
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=42)
+clf = RandomForestClassifier(n_estimators=100, random_state=42)
+clf.fit(X_train, y_train)
+merged["ml_predicted_risk"] = clf.predict(X)
 
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=42)
+# Styled table colors
+def color_risk(val):
+    if val == "Low":
+        return "background-color: lightgreen; color: black"
+    elif val == "Medium":
+        return "background-color: orange; color: black"
+    elif val == "High":
+        return "background-color: red; color: white"
+    return ""
 
-    clf = RandomForestClassifier(n_estimators=100, random_state=42)
-    clf.fit(X_train, y_train)
+styled_df = merged[[
+    "student_id","name","attendance_pct","avg_score","fees_status","rule_risk","ml_predicted_risk"
+]].style.applymap(color_risk, subset=["rule_risk","ml_predicted_risk"])
 
-    merged["ml_predicted_risk"] = clf.predict(X)
+# =========================
+# Tabs Layout
+# =========================
+tab1, tab2, tab3, tab4 = st.tabs(["📑 Data", "📈 Distribution", "🤖 Model Report", "📝 AI Summary"])
 
-    #Styled Table
+with tab1:
     st.subheader("Merged Student Data with Risk Levels")
-
-    def color_risk(val):
-        if val == "Low":
-            return "background-color: lightgreen; color: black"
-        elif val == "Medium":
-            return "background-color: orange; color: black"
-        elif val == "High":
-            return "background-color: red; color: white"
-        return ""
-
-    styled_df = merged[[
-        "student_id","name","attendance_pct","avg_score","fees_status","rule_risk","ml_predicted_risk"
-    ]].style.applymap(color_risk, subset=["rule_risk","ml_predicted_risk"])
-
     st.dataframe(styled_df, use_container_width=True)
 
-    # Chart
+with tab2:
     st.subheader("ML Risk Level Distribution")
     risk_counts = merged["ml_predicted_risk"].value_counts()
     fig, ax = plt.subplots()
@@ -114,16 +130,14 @@ else:
     ax.set_ylabel("Number of Students")
     st.pyplot(fig)
 
-    #  ML Performance
+with tab3:
     st.subheader("Model Evaluation (ML vs Rule-based labels)")
     y_pred = clf.predict(X_test)
     report = classification_report(y_test, y_pred, output_dict=False)
     st.text(report)
 
-    #  AI Summary 
+with tab4:
     st.subheader("AI Summary of Risk Table")
-
-    # Extract key insights
     high_risk_students = merged[merged["ml_predicted_risk"] == "High"]["name"].tolist()
     low_attendance = merged[merged["attendance_pct"] < 60]["name"].tolist()
     unpaid_fees = merged[merged["fees_status"] == "Unpaid"]["name"].tolist()
@@ -137,17 +151,13 @@ else:
     )
 
     summary = summarize_text(insight_text)
-
     if summary:
-        st.write(summary)
+        st.success(summary)
     else:
-        # Fallback rule-based summary
-        summary_text = (
+        st.info(
             f"There are {len(merged)} students. "
             f"High risk: {', '.join(high_risk_students) if high_risk_students else 'None'}. "
             f"Low attendance: {', '.join(low_attendance) if low_attendance else 'None'}. "
             f"Unpaid fees: {', '.join(unpaid_fees) if unpaid_fees else 'None'}. "
             f"Low scores: {', '.join(low_scores) if low_scores else 'None'}."
         )
-        st.write(summary_text)
-
