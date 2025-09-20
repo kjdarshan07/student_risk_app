@@ -13,7 +13,7 @@ st.markdown("<h1 style='text-align: center; color: #2c3e50;'>📊 Early Student 
 st.markdown("<h4 style='text-align: center; color: gray;'>Machine Learning + AI-powered Insights</h4><br>", unsafe_allow_html=True)
 
 # =========================
-# Hugging Face API (optional)
+# Hugging Face API
 # =========================
 API_URL = "https://api-inference.huggingface.co/models/facebook/bart-large-cnn"
 HF_TOKEN = st.secrets.get("HF_TOKEN", None)  # add in Streamlit secrets
